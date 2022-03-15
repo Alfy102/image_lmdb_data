@@ -13,7 +13,7 @@ import json
 import re
 import urllib.request
 import sqlite3
-
+from bs4 import BeautifulSoup
 url_list = [
     'https://www.aliexpress.com/item/1005003955339121.html',
     'https://www.aliexpress.com/item/1005003137851432.html',
@@ -28,6 +28,9 @@ url_list = [
     'https://www.aliexpress.com/item/1005002991024823.html',
     'https://www.aliexpress.com/item/1005002944982447.html'
 ]
+
+
+
 class ImageLmdb(object):
     def __init__(self,product_db_file, image_db_file):
         self.conn = sqlite3.connect(product_db_file)
@@ -76,12 +79,32 @@ class ImageLmdb(object):
 
         return image_data
 
+    def get_image_url_list(self, description_url):
+        #r = requests.get(product_url)
+        #match = re.search(r'data: ({.+})', r.text).group(1)
+        #data = json.loads(match)
+        #description_url = data['descriptionModule']['descriptionUrl']
+        description_url.replace('/fr_FR', '/en_US')
+        html_request = urllib.request.urlopen(description_url)
+        html_content = html_request.read()
+        soup = BeautifulSoup(html_content,features="html.parser")
+        images = []
+        for img in soup.findAll('img'):
+            image_url = img.get('src')
+            if 'https' in image_url:
+                images.append(image_url)
+        return images
 
-    def get_image(self,product_url):        
+
+    def get_product_information(self,product_url):        
         r = requests.get(product_url)
         match = re.search(r'data: ({.+})', r.text).group(1)
         data = json.loads(match)
-        image_list = data['imageModule']['imagePathList']#.keys())#['pageModule'].keys())#['imageModule'])
+        product_description = data['pageModule']['description']
+        product_title = data['pageModule']['title']
+        product_price = data['priceModule']['formatedActivityPrice']
+        #image_list = data['imageModule']['imagePathList']#.keys())#['pageModule'].keys())#['imageModule'])
+        image_list = self.get_image_url_list(data['descriptionModule']['descriptionUrl'])
         product_id = product_url.split('/')[-1]
         product_id = product_id.replace('.html','')
         image_key_list =[]
@@ -91,26 +114,21 @@ class ImageLmdb(object):
             resp = urllib.request.urlopen(image_url)
             image_data = np.asarray(bytearray(resp.read()), dtype="uint8")
             image_data_decode = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
-            image_id = image_url.split('/')[-2]
+            image_id = image_url.split('/')[-1]
+            image_id = image_id.replace('.jpg','')
             image_key_list.append(image_id)
             image_data_list.update({image_id:image_data_decode})
-        return product_id, image_key_list, image_data_list
+        return product_id, image_key_list, image_data_list, product_description, product_title, product_price
 
     def conn_commit(self, sql_instruction):
         cur = self.conn.cursor()
         cur.execute(sql_instruction)
         self.conn.commit()
 
-    def random_name_generator(self,length):
-        all = string.ascii_uppercase + string.digits
-        temp = random.sample(all,length)
-        random_name = "".join(temp)
-        return random_name
-
-    def insert_product_in_db(self, product_id, image_list):
+    def insert_product_in_db(self, product_id, image_key_list, product_description, product_title, product_price):
         insert_data = f"""
-            INSERT INTO product_image_keys (product_id, image_list)
-            VALUES ('{product_id}', '{json.dumps(image_list)}');
+            INSERT INTO product_image_keys (product_id, product_image_list, product_name, product_description, product_price)
+            VALUES ('{product_id}', '{json.dumps(image_key_list)}');
             """
         self.conn_commit(insert_data)
 
@@ -131,20 +149,23 @@ class ImageLmdb(object):
         sql_create_table = """CREATE TABLE IF NOT EXISTS product_image_keys (
                     id integer PRIMARY KEY,
                     product_id string NOT NULL,
-                    image_list string NOT NULL
+                    product_image_list string NOT NULL,
+                    product_name string string NOT NULL,
+                    product_description string NOT NULL,
+                    product_price string NOT NULL
+
                 );"""
 
         self.conn_commit(sql_create_table)
 
     def main(self):
         self.create_table_if_not_exist() 
-        #self.check_key_in_lmdb(self.image_lmdb,'9S4718f9f560ca4312abef2119d55bfc01h')
         for url in url_list:
-            product_id, image_key_list, image_data_list = self.get_image(url)
+            product_id, image_key_list, image_data_list, product_description, product_title, product_price = self.get_product_information(url)
             if not self.check_product_in_db(product_id):
-                self.insert_product_in_db(product_id, image_key_list)
+                self.insert_product_in_db(product_id, image_key_list, product_description, product_title, product_price)
             else: 
-                self.update_product_in_db(product_id,'image_list', image_key_list)
+                self.update_product_in_db(product_id, image_key_list, product_description, product_title, product_price)
             for image_id,image_data in image_data_list.items():
                 self.write_lmdb_jpg(self.image_lmdb,f"{image_id}", image_data)
 
