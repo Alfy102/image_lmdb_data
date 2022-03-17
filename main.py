@@ -1,19 +1,14 @@
-from tabnanny import check
 import lmdb
 import cv2
 import numpy as np
-from pathlib import Path
-from os import listdir
-from os.path import isfile, join
-import random
-import string
-from pip import main
 import requests
 import json
 import re
 import urllib.request
 import sqlite3
 from bs4 import BeautifulSoup
+
+
 url_list = [
     'https://www.aliexpress.com/item/1005003955339121.html',
     'https://www.aliexpress.com/item/1005003137851432.html',
@@ -178,5 +173,3 @@ class ImageLmdb(object):
 if __name__ == "__main__":
     lmdb_class = ImageLmdb('product_image_db.sqlite3','database/image_db')
     lmdb_class.main()
-    
-    #print(random_name_generator(12))
