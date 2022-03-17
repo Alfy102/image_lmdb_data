@@ -131,10 +131,17 @@ def create_blog_post(user_id):
     ht.add_key_value("title", data["title"])
     ht.add_key_value("body",data["body"])
     ht.add_key_value("date",now)
-    ht.add_key_value("user",user_id)
+    ht.add_key_value("user_id",user_id)
 
-    print(ht.get)
-    
+    new_blog_post = BlogPost(
+        title = ht.get_value("title"),
+        body = ht.get_value("body"),
+        date = ht.get_value("date"),
+        user_id = ht.get_value("user_id")
+    )
+    db.session.add(new_blog_post)
+    db.session.commit()
+    return jsonify({"message":"Blogpost created"}), 200
 
 @app.route("/user/<user_id>", methods=['GET'])
 def get_all_blog_post(user_id):
